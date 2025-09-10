@@ -1,13 +1,14 @@
+import os
 import pandas as pd
 from collections import Counter
 # import re
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 import regex as re
 
-filepath = "C:/Users/kkove/Desktop/NLP_project/"
+filepath = r"C:/Users/kkove/Desktop/NLP_project"
 
-df_train = pd.read_csv(filepath+"train_ar_ko_te_fil.csv")
-df_val = pd.read_csv(filepath+"val_ar_ko_te_fil.csv")
+df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil.csv"))
+df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil.csv"))
 
 langs = ["ar", "ko", "te"]
 

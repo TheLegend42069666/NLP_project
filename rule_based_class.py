@@ -1,17 +1,27 @@
+import os
 import pandas as pd
 import regex as re
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from nltk.corpus import stopwords
+from tqdm import trange
+import torch
 
-filepath = "C:/Users/kkove/Desktop/NLP_project/"
+filepath = r"C:/Users/kkove/Desktop/NLP_project"
 
-df_train = pd.read_csv(filepath+"train_ar_ko_te_fil.csv")
-df_val = pd.read_csv(filepath+"val_ar_ko_te_fil.csv")
+df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil.csv"))
+df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil.csv"))
 
 langs = ["ar", "ko", "te"]
 
+use_cuda = torch.cuda.is_available()
+dtype = torch.float16 if use_cuda else torch.float32
+
 model_name = "facebook/nllb-200-distilled-600M"
-model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(
+    model_name,
+    dtype=dtype,
+    low_cpu_mem_usage=True,
+)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 target_lang = "eng_Latn"
@@ -21,17 +31,10 @@ translator = pipeline(
     "translation",
     model=model,
     tokenizer=tokenizer,
-    max_length=400
+    device=0 if use_cuda else -1,
+    dtype="auto",
+    max_length=256
 )
-
-# # --- Simple English stopwords ---
-# stopwords = {
-#     "the","a","an","and","or","of","in","on","to","for","from","by","with",
-#     "is","are","was","were","be","been","being",
-#     "this","that","these","those","it","its","as","at","about","into","over","under",
-#     "do","does","did","done","doing","can","could","may","might","should","would","will","shall",
-#     "you","your","yours","me","my","mine","we","our","ours","they","their","theirs","he","she","his","her","hers","them","us"
-# }
 
 stopwords = set(stopwords.words("english"))
 
@@ -46,45 +49,62 @@ def classify_answerable(question, context, thresh):
     que_words = content_words(question)
     con_words = set(content_words(context))
     overlap = sum(1 for w in que_words if w in con_words)
-    ratio = overlap / max(1, len(que_words))
-    # simple threshold
-    if overlap >= thresh or ratio > 0.3:
+    # ratio = overlap / max(1, len(que_words))
+    if overlap >= thresh:
         return True
     else:
         return False
+
+def batch_translate(texts, src_lang, tgt_lang, batch_size=8):
+    results = []
+    for i in trange(0, len(texts), batch_size, desc=f"Translating {src_lang} to {tgt_lang}"):
+        batch = texts[i:i+batch_size]
+        translations = translator(
+            batch,
+            src_lang=src_lang,
+            tgt_lang=tgt_lang
+        )
+        results.extend([t["translation_text"] for t in translations])
+    return results
 
 # --- Evaluate on validation set ---
 print("\nRule-based classifier performance:")
 for i in langs:
     subset = df_val[df_val["lang"] == i]
-
-    # translate questions to English
-    que_translations = translator(
-        subset["question"].astype(str).tolist(),
-        src_lang=langs_nllb[i],
-        tgt_lang=target_lang
+    questions = subset["question"].astype(str).tolist()
+    que_eng = batch_translate(
+        questions, src_lang=langs_nllb[i], tgt_lang=target_lang, batch_size=16
     )
-    q_eng = [t["translation_text"] for t in que_translations]
 
     preds = []
+    max_pred = []
+    scores = {}
     corr_labels = subset["answerable"].tolist()
+    for thresh in range(1, 11):
+        for que, con in zip(que_eng, subset["context"].astype(str)):
+            preds.append(classify_answerable(que, con, thresh))
+        tp = sum(pred and lab for pred, lab in zip(preds, corr_labels))
+        scores[thresh] = tp
+        if best_thresh is None or tp >= scores[best_thresh]:
+            best_preds = preds.copy()
+            best_thresh = thresh
+        
+        
 
-    for que, con in zip(q_eng, subset["context"].astype(str)):
-        preds.append(classify_answerable(que, con, 2))
-
-    tp = sum(pred and lab for pred, lab in zip(preds, corr_labels))
-    tn = sum((not pred) and (not lab) for pred, lab in zip(preds, corr_labels))
-    fp = sum(pred and (not lab) for pred, lab in zip(preds, corr_labels))
-    fn = sum((not pred) and lab for pred, lab in zip(preds, corr_labels))
+    tp = scores[best_thresh]
+    tn = sum((not pred) and (not lab) for pred, lab in zip(best_preds, corr_labels))
+    fp = sum(pred and (not lab) for pred, lab in zip(best_preds, corr_labels))
+    fn = sum((not pred) and lab for pred, lab in zip(best_preds, corr_labels))
 
     acc = (tp+tn) / len(corr_labels)
     prec = tp / (tp+fp) if (tp+fp) else 0
     rec = tp / (tp+fn) if (tp+fn) else 0
     f1 = 2*prec*rec / (prec+rec) if (prec+rec) else 0
 
+    print(f"\nBest threshold for {i}: {best_thresh}")
     print(f"\nLanguage: {i}")
     print(f"Total samples: {len(corr_labels)}")
     print(f"Accuracy: {acc:.3f}")
-    print(f"Precision (answerable): {prec:.3f}")
-    print(f"Recall (answerable): {rec:.3f}")
-    print(f"F1 (answerable): {f1:.3f}")
+    print(f"Precision: {prec:.3f}")
+    print(f"Recall: {rec:.3f}")
+    print(f"F1: {f1:.3f}")
