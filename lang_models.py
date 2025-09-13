@@ -24,7 +24,7 @@ def oov_inject_train(tokens_list):
     for tokens in tokens_list:
         row = []
         for token in tokens:
-            if token in seen:
+            if token not in seen:
                 row.append("[OOV]")
                 seen.add(token)
             else:
@@ -38,9 +38,38 @@ def oov_replace(tokens_list, vocab):
 def train_ngram_model(texts, n):
     tokens = [tokenize(text) for text in texts]
     tokens_oov, vocab = oov_inject_train(tokens)
-    train_ngrams, padded_vocab = padded_everygram_pipeline(n, tokens_oov)
+    train_ngrams, vocab_prep = padded_everygram_pipeline(n, tokens_oov)
     lm = KneserNeyInterpolated(n)
-    lm.fit(train_ngrams, padded_vocab)
+    lm.fit(train_ngrams, vocab_prep)
     return lm, vocab
 
-def
+def logprob(lm, tokens, n):
+    logp = 0.0; cnt = 0
+    for ng in everygrams(tokens, max_len=n):
+        last, hist = ng[-1], ng[:-1]
+        logp += math.log(lm.score(last, hist) + 1e-12)  # avoid -inf
+        cnt += 1
+    return logp, cnt
+
+def perplexity(lm, texts, vocab, n):
+    tokens = [tokenize(t) for t in texts]
+    tokens = [[w if w in vocab else "[OOV]" for w in row] for row in tokens]  # slides: OOV replace
+    total_lp = 0.0; total_cnt = 0
+    for row in tokens:
+        lp, c = logprob(lm, row, n)
+        total_lp += lp; total_cnt += max(1, c)
+    return math.exp(-total_lp / total_cnt)
+
+for lang in langs:
+    train_subset = df_train[df_train["lang"] == f"{lang}"]
+    train_ques = train_subset["question"]
+    val_subset = df_val[df_val["lang"] == f"{lang}"]
+    val_ques = val_subset["question"]
+
+    tr_que_list = train_ques.astype(str).tolist()
+    val_que_list = val_ques.astype(str).tolist()
+    lm, vocab = train_ngram_model(tr_que_list, 3)
+    pp = perplexity(lm, val_que_list, vocab, 3)
+
+    print(f"pp for {lang}: {pp}")
+    

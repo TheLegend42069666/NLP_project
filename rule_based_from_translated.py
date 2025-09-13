@@ -64,8 +64,8 @@ def classify_answerable(question, context, thresh, min_ratio):
 print("\nRule-based classifier performance (train-tuned threshold, eval on val):")
 for i in langs:
     train_subset = df_train[df_train["lang"] == i]
-    train_q = train_subset["question_en"].astype(str).tolist()
-    train_y = train_subset["answerable"].tolist()
+    train_que = train_subset["question_en"].astype(str).tolist()
+    train_lab = train_subset["answerable"].tolist()
 
     best_thresh = None
     best_ratio = None
@@ -75,10 +75,10 @@ for i in langs:
     for thresh in range(0, 11):
         for ratio in [0.10, 0.20, 0.30, 0.4, 0.5]:
             preds = [classify_answerable(q, c, thresh, ratio)
-                    for q, c in zip(train_q, train_subset["context"].astype(str))]
-            tp = sum(p and y for p, y in zip(preds, train_y))
-            tn = sum((not p) and (not y) for p, y in zip(preds, train_y))
-            acc = (tp + tn) / len(train_y) if len(train_y) else 0.0
+                    for q, c in zip(train_que, train_subset["context"].astype(str))]
+            tp = sum(p and y for p, y in zip(preds, train_lab))
+            tn = sum((not p) and (not y) for p, y in zip(preds, train_lab))
+            acc = (tp + tn) / len(train_lab) if len(train_lab) else 0.0
             train_scores[thresh] = acc
             if acc > best_acc:
                 best_acc = acc
