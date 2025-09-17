@@ -72,7 +72,7 @@ for i in langs:
     best_acc = -1
     train_scores = {}
 
-    for thresh in range(0, 11):
+    for thresh in range(1, 11):
         for ratio in [0.10, 0.20, 0.30, 0.4, 0.5]:
             preds = [classify_answerable(q, c, thresh, ratio)
                     for q, c in zip(train_que, train_subset["context"].astype(str))]

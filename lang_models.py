@@ -95,7 +95,7 @@ for lang in langs:
     print(f"{lang} - val OOV rate:", round(oov_rate(val_que_list, vocab), 4))
     print(f"{lang} - pp: {best_pp} (using {best_n}-gram)\n")
 
-n_grams_eng = [5]
+n_grams_eng = [4, 5]
 
 for n in n_grams_eng:
     best_pp_eng = None
