@@ -3,7 +3,7 @@ import pandas as pd
 import regex as re
 import math
 from nltk.lm import KneserNeyInterpolated
-from nltk.lm.preprocessing import padded_everygram_pipeline
+from nltk.lm.preprocessing import padded_everygram_pipeline, pad_both_ends
 from nltk.util import ngrams
 
 filepath = r"C:/Users/kkove/Desktop/NLP_project"
@@ -42,8 +42,9 @@ def train_ngram_model(texts, n):
     return lm, vocab
 
 def logprob(lm, tokens, n):
+    seq = list(pad_both_ends(tokens, n))
     logp = 0.0; count = 0
-    for ng in ngrams(tokens, n):
+    for ng in ngrams(seq, n):
         last, hist = ng[-1], ng[:-1]
         logp += math.log(lm.score(last, hist) + 1e-12)
         count += 1
