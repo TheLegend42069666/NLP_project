@@ -4,7 +4,8 @@ from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from tqdm import trange
 import torch
 
-filepath = r"C:/Users/kkove/Desktop/NLP_project"
+from pathlib import Path
+filepath = Path(__file__).resolve().parents[1]
 
 df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil.csv"))
 
@@ -45,7 +46,7 @@ def batch_translate(texts, src_lang, tgt_lang, batch_size=8):
         results.extend([t["translation_text"] for t in translations])
     return results
 
-print("\nTranslating df_val questions to English and saving...")
+print("\n=== Translating df_val questions to English and saving ===")
 df_out = df_train.copy()
 df_out["question_en"] = ""
 

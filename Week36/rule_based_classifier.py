@@ -2,8 +2,10 @@ import os
 import pandas as pd
 import regex as re
 from nltk.corpus import stopwords
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-filepath = r"C:/Users/kkove/Desktop/NLP_project"
+from pathlib import Path
+filepath = Path(__file__).resolve().parents[1]
 
 df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil_tran.csv"))
 df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil_tran.csv"))
@@ -46,7 +48,7 @@ def classify_answerable(question, context, thresh, min_ratio):
     bigram_match = any_bigram_in_context(que_words, con_words)
     number_ok    = has_number_overlap(question, context)
 
-    que_norm = " ".join(que_words)  # normalized lowercase question for simple startswith checks
+    que_norm = " ".join(que_words)
     con_raw = str(context)
     
     wh_word_check = False
@@ -74,11 +76,9 @@ for i in langs:
 
     for thresh in range(1, 11):
         for ratio in [0.10, 0.20, 0.30, 0.4, 0.5]:
-            preds = [classify_answerable(q, c, thresh, ratio)
-                    for q, c in zip(train_que, train_subset["context"].astype(str))]
-            tp = sum(p and y for p, y in zip(preds, train_lab))
-            tn = sum((not p) and (not y) for p, y in zip(preds, train_lab))
-            acc = (tp + tn) / len(train_lab) if len(train_lab) else 0.0
+            preds = [classify_answerable(que, con, thresh, ratio)
+                    for que, con in zip(train_que, train_subset["context"].astype(str))]
+            acc = accuracy_score(train_lab, preds)
             train_scores[thresh] = acc
             if acc > best_acc:
                 best_acc = acc
@@ -90,18 +90,13 @@ for i in langs:
     val_que = val_subset["question_en"].astype(str).tolist()
     val_lab = val_subset["answerable"].tolist()
 
-    preds = [classify_answerable(que, con, best_thresh, 0.30)
+    preds = [classify_answerable(que, con, best_thresh, best_ratio)
              for que, con in zip(val_que, val_subset["context"].astype(str))]
 
-    tp = sum(pred and lab for pred, lab in zip(preds, val_lab))
-    tn = sum((not pred) and (not lab) for pred, lab in zip(preds, val_lab))
-    fp = sum(pred and (not lab) for pred, lab in zip(preds, val_lab))
-    fn = sum((not pred) and lab for pred, lab in zip(preds, val_lab))
-
-    acc = (tp + tn) / len(val_que)
-    prec = tp / (tp + fp) if (tp + fp) else 0.0
-    rec  = tp / (tp + fn) if (tp + fn) else 0.0
-    f1   = 2*prec*rec / (prec + rec) if (prec + rec) else 0.0
+    acc = accuracy_score(val_lab, preds)
+    prec = precision_score(val_lab, preds, zero_division=0)
+    rec  = recall_score(val_lab, preds, zero_division=0)
+    f1   = f1_score(val_lab, preds, zero_division=0)
 
     print(f"\nLanguage: {i}")
     print("Train acc by threshold and ratio:", {k: round(v, 3) for k, v in train_scores.items()})
@@ -111,3 +106,15 @@ for i in langs:
     print(f"Precision: {prec:.3f}")
     print(f"Recall: {rec:.3f}")
     print(f"F1: {f1:.3f}")
+
+    if i == "te":
+        df_test = pd.read_json(os.path.join(filepath, "test.json"))
+        test_subset = df_test[df_test["lang"] == "te"]
+        test_preds = [
+            classify_answerable(que, con, best_thresh, 0.30)
+            for que, con in zip(test_subset["question_en"].astype(str), test_subset["context"].astype(str))
+        ]
+
+        print("\nResults on test.json (te only):")
+        for id, pred in zip(test_subset["id"].tolist(), test_preds):
+            print(f"id={id} - predicted: {'answerable' if pred else 'unanswerable'}")

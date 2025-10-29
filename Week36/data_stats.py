@@ -1,11 +1,11 @@
 import os
 import pandas as pd
 from collections import Counter
-# import re
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 import regex as re
 
-filepath = r"C:/Users/kkove/Desktop/NLP_project"
+from pathlib import Path
+filepath = Path(__file__).resolve().parents[1]
 
 df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil.csv"))
 df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil.csv"))
@@ -36,6 +36,22 @@ print(f"Training set: {train_percent_answerable}%")
 
 val_percent_answerable = df_val[df_val["answerable"]].shape[0]/df_val.shape[0]*100
 print(f"Validation set: {val_percent_answerable}%")
+
+print("\nPercent of answerable questions per language (Training):")
+for i in langs:
+    subset = df_train[df_train["lang"] == i]
+    total = len(subset)
+    ans = subset["answerable"].astype(bool).sum()
+    pct = 100.0 * ans / total if total else 0.0
+    print(f"{i}: {pct:.2f}% ({ans}/{total})")
+
+print("\nPercent of answerable questions per language (Validation):")
+for i in langs:
+    subset = df_val[df_val["lang"] == i]
+    total = len(subset)
+    ans = subset["answerable"].astype(bool).sum()
+    pct = 100.0 * ans / total if total else 0.0
+    print(f"{i}: {pct:.2f}% ({ans}/{total})")
 
 #https://medium.com/@FaridSharaf/text-translation-using-nllb-and-huggingface-tutorial-7e789e0f7816
 model_name = "facebook/nllb-200-distilled-600M"

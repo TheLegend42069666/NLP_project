@@ -1,6 +1,7 @@
 import pandas as pd
 
-filepath = "C:/Users/kkove/Desktop/NLP_project/"
+from pathlib import Path
+filepath = Path(__file__).resolve().parents[1]
 
 df_train = pd.read_csv(filepath+"tydi_xor_rc_train.csv")
 df_val = pd.read_csv(filepath+"tydi_xor_rc_validation.csv")

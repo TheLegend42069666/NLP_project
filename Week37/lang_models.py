@@ -6,10 +6,11 @@ from nltk.lm import KneserNeyInterpolated
 from nltk.lm.preprocessing import padded_everygram_pipeline, pad_both_ends
 from nltk.util import ngrams
 
-filepath = r"C:/Users/kkove/Desktop/NLP_project"
+from pathlib import Path
+filepath = Path(__file__).resolve().parents[1]
 
-df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil_tran.csv"))
-df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil_tran.csv"))
+df_train = pd.read_csv(os.path.join(filepath, "train_ar_ko_te_fil.csv"))
+df_val   = pd.read_csv(os.path.join(filepath, "val_ar_ko_te_fil.csv"))
 
 langs = ["ar", "ko", "te"]
 
@@ -17,21 +18,14 @@ def tokenize(text):
     return re.findall(r"(?:\p{L}\p{M}*)(?:['’](?:\p{L}\p{M}*))+|\p{L}\p{M}*|\p{N}+", str(text))
 
 def oov_inject_train(tokens_list):
-    seen = set()
-    output = []
-    for tokens in tokens_list:
-        row = []
-        for token in tokens:
-            if token not in seen:
-                row.append("[OOV]")
-                seen.add(token)
-            else:
-                row.append(token)
-        output.append(row)
-    return output, seen
+    from collections import Counter
+    counts = Counter(t for row in tokens_list for t in row)
+    vocab = {t for t, c in counts.items() if c > 1}
+    output = [[t if t in vocab else "[OOV]" for t in row] for row in tokens_list]
+    return output, vocab
 
 def oov_replace(tokens_list, vocab):
-    return [[word if word in vocab else "[OOV]"] for word in tokens_list]
+    return [[word if word in vocab else "[OOV]" for word in row] for row in tokens_list]
 
 def train_ngram_model(texts, n):
     tokens = [tokenize(text) for text in texts]
@@ -68,18 +62,19 @@ def token_count(texts):
     return sum(len(tokenize(t)) for t in texts)
 
 for lang in ["ar","ko","te"]:
-    print(lang, "train Q tokens:", token_count(df_train[df_train["lang"]==lang]["question"]))
-    print(lang, "val   Q tokens:", token_count(df_val[df_val["lang"]==lang]["question"]))
+    print(lang, "train que tokens:", token_count(df_train[df_train["lang"]==lang]["question"]))
+    print(lang, "val   que tokens:", token_count(df_val[df_val["lang"]==lang]["question"]))
 print("EN context train tokens:", token_count(df_train["context"]))
 print("EN context val   tokens:", token_count(df_val["context"]))
 
-n_grams = [4, 5]
+n_grams = [3, 4, 5]
 
 for lang in langs:
     best_pp = None
     best_n = None
+    best_vocab = None
     for n in n_grams:
-        print(f"Training {n}-gram model for {lang}...")
+        print(f"=== Training {n}-gram model for {lang} ===")
         train_subset = df_train[df_train["lang"] == f"{lang}"]
         train_ques = train_subset["question"]
         val_subset = df_val[df_val["lang"] == f"{lang}"]
@@ -92,33 +87,28 @@ for lang in langs:
         if best_pp is None or pp < best_pp:
             best_pp = pp
             best_n = n
+            best_vocab = vocab
 
-    print(f"{lang} - val OOV rate:", round(oov_rate(val_que_list, vocab), 4))
+    print(f"{lang} - val OOV rate:", round(oov_rate(val_que_list, best_vocab), 4))
     print(f"{lang} - pp: {best_pp} (using {best_n}-gram)\n")
 
-n_grams_eng = [4, 5]
+n_grams_eng = [3, 4, 5]
+
+best_pp_eng = None
+best_n_eng = None
+best_vocab_eng = None
+
+con_train_list = df_train["context"].astype(str).tolist()[:63]
+con_val_list   = df_val["context"].astype(str).tolist()[:11]
 
 for n in n_grams_eng:
-    best_pp_eng = None
-    best_n_eng = None
-    print(f"Training {n}-gram model for English context...")
-    con_train_list = df_train["context"].astype(str).tolist()[:63]
-    con_val_list   = df_val["context"].astype(str).tolist()[:11]
-
-    # train_subset = df_train[df_train["lang"] == f"ar"]
-    # train_ques = train_subset["question"]
-    # train_ques_list = train_ques.astype(str).tolist()
-    # print(len(train_ques_list))
-
-    # print(len(con_train_list), len(con_val_list))
-    # print(con_train_list[0])
-
+    print(f"=== Training {n}-gram model for English context ===")
     lm_con, vocab_con = train_ngram_model(con_train_list, n)
     pp_con = perplexity(lm_con, con_val_list, vocab_con, n)
-    if best_pp_eng is None or pp < best_pp_eng:
-            best_pp_eng = pp
-            best_n_eng = n
+    if best_pp_eng is None or pp_con < best_pp_eng:
+        best_pp_eng = pp_con
+        best_n_eng = n
+        best_vocab_eng = vocab_con
 
-print("eng OOV rate:", round(oov_rate(con_val_list, vocab_con), 4))
+print(f"eng OOV rate: {round(oov_rate(con_val_list, best_vocab_eng), 4)}")
 print(f"pp for eng: {best_pp_eng} (using {best_n_eng}-gram)\n")
-    
